@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+import json
+import os
+import re
+import subprocess
+import sys
+from urllib.parse import urlparse, parse_qs
+
+YTDLP = os.path.expanduser("~/bin/yt-dlp")
+OUTDIR = os.path.expanduser("~/Downloads/ytdl")
+os.makedirs(OUTDIR, exist_ok=True)
+
+def clean_url(url):
+    if "youtu.be/" in url:
+        vid = url.split("youtu.be/")[1].split("?")[0].split("&")[0]
+    else:
+        q = parse_qs(urlparse(url).query)
+        vid = q.get("v", [""])[0]
+    if not vid:
+        return None, None
+    return vid, f"https://www.youtube.com/watch?v={vid}"
+
+def safe_name(name):
+    name = re.sub(r'[/:*?"<>|]', "_", name)
+    return name[:100].strip() or "video"
+
+url = input("YouTube链接: ").strip()
+video_id, clean = clean_url(url)
+
+if not video_id:
+    print("没有识别到视频ID")
+    sys.exit(1)
+
+print(f"\n识别到视频ID：{video_id}")
+print("正在读取清晰度列表...\n")
+
+p = subprocess.run([YTDLP, "-J", "--no-playlist", clean], text=True, capture_output=True)
+
+if p.returncode != 0:
+    print(p.stderr)
+    sys.exit(1)
+
+info = json.loads(p.stdout)
+title = safe_name(info.get("title", video_id))
+formats = info.get("formats", [])
+
+candidates = []
+
+for f in formats:
+    if f.get("vcodec") == "none":
+        continue
+
+    fmt_id = f.get("format_id")
+    height = f.get("height") or 0
+    width = f.get("width") or 0
+    fps = f.get("fps") or 0
+    ext = f.get("ext") or ""
+    filesize = f.get("filesize") or f.get("filesize_approx") or 0
+
+    if not fmt_id or not height:
+        continue
+
+    candidates.append({
+        "format_id": fmt_id,
+        "height": height,
+        "width": width,
+        "fps": fps,
+        "ext": ext,
+        "filesize": filesize,
+    })
+
+candidates.sort(key=lambda x: (x["height"], x["fps"], x["ext"] == "mp4"), reverse=True)
+
+display = []
+seen = set()
+
+for c in candidates:
+    key = (c["height"], c["fps"], c["ext"])
+    if key in seen:
+        continue
+    seen.add(key)
+    display.append(c)
+
+print("可选清晰度：")
+for i, c in enumerate(display, 1):
+    size = f"{c['filesize'] / 1024 / 1024:.1f}MB" if c["filesize"] else ""
+    h = f"{c['height']}p"
+    fps = f"{c['fps']}fps" if c["fps"] else ""
+    print(f"{i}. {h} {fps} {c['ext']} + m4a音频 {size}  format={c['format_id']}")
+
+print("\n0. 自动选择最佳画质")
+
+choice = input("\n输入数字选择清晰度: ").strip()
+
+if choice == "0" or choice == "":
+    fmt = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/best"
+else:
+    if not choice.isdigit() or not (1 <= int(choice) <= len(display)):
+        print("选择无效")
+        sys.exit(1)
+
+    selected = display[int(choice) - 1]
+    fid = selected["format_id"]
+
+    fmt = f"{fid}+ba[ext=m4a]/best"
+
+outfile = os.path.join(OUTDIR, f"{title}.%(ext)s")
+
+print(f"\n开始下载：{title}")
+print(f"输出目录：{OUTDIR}\n")
+
+cmd = [
+    YTDLP,
+    clean,
+    "--no-playlist",
+    "-f", fmt,
+    "--merge-output-format", "mp4",
+    "-o", outfile
+]
+
+subprocess.run(cmd)
+
+print(f"\n完成，文件在：{OUTDIR}")
