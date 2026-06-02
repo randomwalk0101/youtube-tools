@@ -190,6 +190,8 @@ This project is intended for personal learning, research, subtitle extraction, c
 
 Please comply with YouTube Terms of Service and applicable copyright laws.
 
+## Welcome donate
+
 Bep20：
 
 ```bash
