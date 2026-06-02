@@ -1,0 +1,58 @@
+#!/bin/bash
+
+read -p "YouTube链接: " URL
+read -p "提取前多少秒音频: " CUT_SECONDS
+
+VIDEO_ID=$(echo "$URL" | sed -n 's/.*v=\([^&]*\).*/\1/p')
+
+if [ -z "$VIDEO_ID" ]; then
+  VIDEO_ID=$(echo "$URL" | sed -n 's#.*youtu\.be/\([^?&/]*\).*#\1#p')
+fi
+
+if [ -z "$VIDEO_ID" ]; then
+  echo "没有识别到视频ID，请检查链接"
+  exit 1
+fi
+
+CLEAN_URL="https://www.youtube.com/watch?v=$VIDEO_ID"
+
+OUTDIR="$HOME/Downloads/ytaudio"
+TMPDIR="$OUTDIR/tmp_$VIDEO_ID"
+mkdir -p "$TMPDIR"
+
+echo ""
+echo "识别到视频ID：$VIDEO_ID"
+echo "准备下载音频并提取前 $CUT_SECONDS 秒..."
+echo ""
+
+"$HOME/bin/yt-dlp" \
+"$CLEAN_URL" \
+--no-playlist \
+-f "bestaudio/best" \
+-o "$TMPDIR/audio.%(ext)s"
+
+AUDIOFILE=$(find "$TMPDIR" -type f | head -n 1)
+
+if [ -z "$AUDIOFILE" ]; then
+  echo "下载失败，没有找到音频文件"
+  exit 1
+fi
+
+TITLE=$("$HOME/bin/yt-dlp" --get-title --no-playlist "$CLEAN_URL" | head -n 1)
+SAFE_TITLE=$(echo "$TITLE" | tr '/:*?"<>|' '_' | cut -c 1-80)
+
+OUTFILE="$OUTDIR/${SAFE_TITLE}_${CUT_SECONDS}s.mp3"
+
+ffmpeg -y \
+-i "$AUDIOFILE" \
+-t "$CUT_SECONDS" \
+-vn \
+-ar 44100 \
+-ac 2 \
+-b:a 192k \
+"$OUTFILE"
+
+rm -rf "$TMPDIR"
+
+echo ""
+echo "完成：$OUTFILE"

@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+import json, os, re, subprocess, sys, shutil
+from urllib.parse import urlparse, parse_qs
+
+YTDLP = os.path.expanduser("~/bin/yt-dlp")
+OUTDIR = os.path.expanduser("~/Downloads/ytsub")
+os.makedirs(OUTDIR, exist_ok=True)
+
+def clean_url(url):
+    if "youtu.be/" in url:
+        vid = url.split("youtu.be/")[1].split("?")[0].split("&")[0]
+    else:
+        q = parse_qs(urlparse(url).query)
+        vid = q.get("v", [""])[0]
+    if not vid:
+        return None, None
+    return vid, f"https://www.youtube.com/watch?v={vid}"
+
+def safe_name(name):
+    name = re.sub(r'[/:*?"<>|]', "_", name)
+    return name[:80].strip() or "subtitle"
+
+def run(cmd):
+    return subprocess.run(cmd, text=True, capture_output=True)
+
+url = input("YouTube链接: ").strip()
+video_id, clean = clean_url(url)
+
+if not video_id:
+    print("没有识别到视频ID")
+    sys.exit(1)
+
+print(f"\n识别到视频ID：{video_id}")
+print("正在读取字幕列表...\n")
+
+p = run([YTDLP, "-J", "--no-playlist", clean])
+if p.returncode != 0:
+    print(p.stderr)
+    sys.exit(1)
+
+info = json.loads(p.stdout)
+title = safe_name(info.get("title", video_id))
+
+items = []
+
+for code, formats in info.get("subtitles", {}).items():
+    items.append(("manual", code, formats))
+
+for code, formats in info.get("automatic_captions", {}).items():
+    items.append(("auto", code, formats))
+
+if not items:
+    print("这个视频没有可下载字幕。")
+    sys.exit(0)
+
+print("可下载字幕：")
+for i, (kind, code, formats) in enumerate(items, 1):
+    label = "人工字幕" if kind == "manual" else "自动字幕"
+    print(f"{i}. {code}  [{label}]")
+
+choice = input("\n输入数字选择字幕: ").strip()
+
+if not choice.isdigit() or not (1 <= int(choice) <= len(items)):
+    print("选择无效")
+    sys.exit(1)
+
+kind, lang, formats = items[int(choice)-1]
+
+tmpdir = os.path.join(OUTDIR, f"tmp_{video_id}")
+shutil.rmtree(tmpdir, ignore_errors=True)
+os.makedirs(tmpdir, exist_ok=True)
+
+base = os.path.join(tmpdir, "sub")
+
+cmd = [
+    YTDLP,
+    clean,
+    "--no-playlist",
+    "--skip-download",
+    "--sub-langs", lang,
+    "--sub-format", "vtt/best",
+    "-o", base + ".%(ext)s"
+]
+
+if kind == "manual":
+    cmd.append("--write-subs")
+else:
+    cmd.append("--write-auto-subs")
+
+print(f"\n正在下载：{lang} [{kind}]\n")
+
+subprocess.run(cmd)
+
+vtt_files = []
+for root, dirs, files in os.walk(tmpdir):
+    for f in files:
+        if f.endswith(".vtt"):
+            vtt_files.append(os.path.join(root, f))
+
+if not vtt_files:
+    print("\n没有下载到字幕文件。这个语言可能显示在列表中，但实际不可用。")
+    sys.exit(1)
+
+vtt = vtt_files[0]
+
+final_base = os.path.join(OUTDIR, f"{title}_{lang}_{kind}")
+
+final_vtt = final_base + ".vtt"
+final_srt = final_base + ".srt"
+final_txt = final_base + ".txt"
+
+shutil.copy(vtt, final_vtt)
+
+subprocess.run([
+    "ffmpeg", "-y",
+    "-i", final_vtt,
+    final_srt
+], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+text_lines = []
+with open(final_vtt, "r", encoding="utf-8", errors="ignore") as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        if line == "WEBVTT":
+            continue
+        if "-->" in line:
+            continue
+        if line.isdigit():
+            continue
+        if line.startswith("Kind:") or line.startswith("Language:"):
+            continue
+        line = re.sub(r"<[^>]+>", "", line)
+        line = re.sub(r"\s+", " ", line).strip()
+        if line:
+            text_lines.append(line)
+
+cleaned = []
+last = None
+for line in text_lines:
+    if line != last:
+        cleaned.append(line)
+    last = line
+
+with open(final_txt, "w", encoding="utf-8") as f:
+    f.write("\n".join(cleaned))
+
+shutil.rmtree(tmpdir, ignore_errors=True)
+
+print("\n完成，已输出三种格式：")
+print(final_vtt)
+print(final_srt)
+print(final_txt)

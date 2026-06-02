@@ -1,0 +1,56 @@
+#!/bin/bash
+
+read -p "YouTube链接: " URL
+read -p "下载前多少秒: " CUT_SECONDS
+
+VIDEO_ID=$(echo "$URL" | sed -n 's/.*v=\([^&]*\).*/\1/p')
+
+if [ -z "$VIDEO_ID" ]; then
+  VIDEO_ID=$(echo "$URL" | sed -n 's#.*youtu\.be/\([^?&/]*\).*#\1#p')
+fi
+
+if [ -z "$VIDEO_ID" ]; then
+  echo "没有识别到视频ID，请检查链接"
+  exit 1
+fi
+
+CLEAN_URL="https://www.youtube.com/watch?v=$VIDEO_ID"
+
+OUTDIR="$HOME/Downloads/ytcut"
+TMPDIR="$OUTDIR/tmp_$VIDEO_ID"
+mkdir -p "$TMPDIR"
+
+echo ""
+echo "识别到视频ID：$VIDEO_ID"
+echo "下载链接：$CLEAN_URL"
+echo "准备下载完整低清临时视频，再裁剪前 $CUT_SECONDS 秒..."
+echo ""
+
+"$HOME/bin/yt-dlp" \
+"$CLEAN_URL" \
+--no-playlist \
+-f "best[height<=720][ext=mp4]/best[height<=720]/best" \
+-o "$TMPDIR/full.%(ext)s"
+
+FULLFILE=$(find "$TMPDIR" -type f | head -n 1)
+
+if [ -z "$FULLFILE" ]; then
+  echo "下载失败，没有找到临时视频文件"
+  exit 1
+fi
+
+TITLE=$("$HOME/bin/yt-dlp" --get-title --no-playlist "$CLEAN_URL" | head -n 1)
+SAFE_TITLE=$(echo "$TITLE" | tr '/:*?"<>|' '_' | cut -c 1-80)
+
+OUTFILE="$OUTDIR/${SAFE_TITLE}_${CUT_SECONDS}s.mp4"
+
+ffmpeg -y \
+-i "$FULLFILE" \
+-t "$CUT_SECONDS" \
+-c copy \
+"$OUTFILE"
+
+rm -rf "$TMPDIR"
+
+echo ""
+echo "完成：$OUTFILE"
