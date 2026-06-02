@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from urllib.parse import urlparse, parse_qs
@@ -9,6 +10,7 @@ from urllib.parse import urlparse, parse_qs
 YTDLP = os.path.expanduser("~/bin/yt-dlp")
 OUTDIR = os.path.expanduser("~/Downloads/ytdl")
 os.makedirs(OUTDIR, exist_ok=True)
+
 
 def clean_url(url):
     if "youtu.be/" in url:
@@ -20,9 +22,22 @@ def clean_url(url):
         return None, None
     return vid, f"https://www.youtube.com/watch?v={vid}"
 
+
 def safe_name(name):
     name = re.sub(r'[/:*?"<>|]', "_", name)
     return name[:100].strip() or "video"
+
+
+if not os.path.exists(YTDLP):
+    print(f"找不到 yt-dlp：{YTDLP}")
+    print("请先安装 yt-dlp。")
+    sys.exit(1)
+
+if not shutil.which("ffmpeg"):
+    print("找不到 ffmpeg。")
+    print("请先执行：brew install ffmpeg")
+    sys.exit(1)
+
 
 url = input("YouTube链接: ").strip()
 video_id, clean = clean_url(url)
@@ -101,8 +116,49 @@ else:
 
     selected = display[int(choice) - 1]
     fid = selected["format_id"]
-
     fmt = f"{fid}+ba[ext=m4a]/best"
+
+print("\n字幕选项：")
+print("0. 不下载字幕")
+print("1. 中文字幕")
+print("2. 英文字幕")
+print("3. 中英字幕（默认）")
+print("4. 全部可用字幕")
+
+sub_choice = input("\n输入数字选择字幕语言，直接回车默认中英字幕: ").strip()
+
+sub_args = []
+
+if sub_choice == "0":
+    sub_args = []
+elif sub_choice == "1":
+    sub_args = [
+        "--write-sub",
+        "--write-auto-sub",
+        "--sub-langs", "zh-Hans,zh-CN,zh,zh-Hant",
+        "--embed-subs",
+    ]
+elif sub_choice == "2":
+    sub_args = [
+        "--write-sub",
+        "--write-auto-sub",
+        "--sub-langs", "en",
+        "--embed-subs",
+    ]
+elif sub_choice == "4":
+    sub_args = [
+        "--write-sub",
+        "--write-auto-sub",
+        "--all-subs",
+        "--embed-subs",
+    ]
+else:
+    sub_args = [
+        "--write-sub",
+        "--write-auto-sub",
+        "--sub-langs", "zh-Hans,zh-CN,zh,zh-Hant,en",
+        "--embed-subs",
+    ]
 
 outfile = os.path.join(OUTDIR, f"{title}.%(ext)s")
 
@@ -115,9 +171,14 @@ cmd = [
     "--no-playlist",
     "-f", fmt,
     "--merge-output-format", "mp4",
-    "-o", outfile
+    *sub_args,
+    "-o", outfile,
 ]
 
-subprocess.run(cmd)
+result = subprocess.run(cmd)
 
-print(f"\n完成，文件在：{OUTDIR}")
+if result.returncode == 0:
+    print(f"\n完成，文件在：{OUTDIR}")
+else:
+    print("\n下载失败，请查看上面的错误信息。")
+    sys.exit(result.returncode)
