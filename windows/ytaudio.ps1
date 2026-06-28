@@ -1,5 +1,14 @@
-$url = Read-Host "YouTube URL"
-$seconds = Read-Host "Extract first N seconds audio (press Enter for full audio)"
+$url = if ($args.Count -ge 1 -and -not [string]::IsNullOrWhiteSpace($args[0])) {
+    $args[0]
+} else {
+    Read-Host "YouTube URL"
+}
+
+$seconds = if ($args.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($args[1])) {
+    $args[1]
+} else {
+    Read-Host "Extract first N seconds audio (press Enter for full audio)"
+}
 
 function Get-YtDlpCookieArgs {
     $browser = $env:YTDLP_COOKIE_BROWSER
