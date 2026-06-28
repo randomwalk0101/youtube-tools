@@ -1,4 +1,8 @@
-$url = Read-Host "YouTube URL"
+$url = if ($args.Count -ge 1 -and -not [string]::IsNullOrWhiteSpace($args[0])) {
+    $args[0]
+} else {
+    Read-Host "YouTube URL"
+}
 
 function Get-YtDlpCookieArgs {
     $browser = $env:YTDLP_COOKIE_BROWSER
