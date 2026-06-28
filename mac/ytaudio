@@ -27,20 +27,30 @@ if [ -n "$COOKIE_BROWSER" ]; then
   YTDLP_ARGS+=(--cookies-from-browser "$COOKIE_BROWSER")
 fi
 
-"$HOME/bin/yt-dlp" \
+if ! "$HOME/bin/yt-dlp" \
 "${YTDLP_ARGS[@]}" \
 "$CLEAN_URL" \
 --no-playlist \
 -f "bestaudio/best" \
 -o "$TMPDIR/audio.%(ext)s"
+then
+  echo "yt-dlp failed. If Safari cookies are blocked on macOS, grant Full Disk Access to your terminal app or set YTDLP_COOKIE_BROWSER=chrome."
+  rm -rf "$TMPDIR"
+  exit 1
+fi
 
 AUDIOFILE=$(find "$TMPDIR" -type f | head -n 1)
 
-TITLE=$("$HOME/bin/yt-dlp" \
+if ! TITLE=$("$HOME/bin/yt-dlp" \
 "${YTDLP_ARGS[@]}" \
 --get-title \
 --no-playlist \
 "$CLEAN_URL" | head -n 1)
+then
+  echo "Could not read video title."
+  rm -rf "$TMPDIR"
+  exit 1
+fi
 
 SAFE_TITLE=$(echo "$TITLE" | tr '/:*?"<>|' '_' | cut -c 1-80)
 

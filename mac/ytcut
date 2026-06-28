@@ -32,12 +32,17 @@ echo "下载链接：$CLEAN_URL"
 echo "准备下载完整低清临时视频，再裁剪前 $CUT_SECONDS 秒..."
 echo ""
 
-"$HOME/bin/yt-dlp" \
+if ! "$HOME/bin/yt-dlp" \
 "${YTDLP_ARGS[@]}" \
 "$CLEAN_URL" \
 --no-playlist \
 -f "best[height<=720][ext=mp4]/best[height<=720]/best" \
 -o "$TMPDIR/full.%(ext)s"
+then
+  echo "yt-dlp failed. If Safari cookies are blocked on macOS, grant Full Disk Access to your terminal app or set YTDLP_COOKIE_BROWSER=chrome."
+  rm -rf "$TMPDIR"
+  exit 1
+fi
 
 FULLFILE=$(find "$TMPDIR" -type f | head -n 1)
 
@@ -46,7 +51,12 @@ if [ -z "$FULLFILE" ]; then
   exit 1
 fi
 
-TITLE=$("$HOME/bin/yt-dlp" "${YTDLP_ARGS[@]}" --get-title --no-playlist "$CLEAN_URL" | head -n 1)
+if ! TITLE=$("$HOME/bin/yt-dlp" "${YTDLP_ARGS[@]}" --get-title --no-playlist "$CLEAN_URL" | head -n 1)
+then
+  echo "Could not read video title."
+  rm -rf "$TMPDIR"
+  exit 1
+fi
 SAFE_TITLE=$(echo "$TITLE" | tr '/:*?"<>|' '_' | cut -c 1-80)
 
 OUTFILE="$OUTDIR/${SAFE_TITLE}_${CUT_SECONDS}s.mp4"
