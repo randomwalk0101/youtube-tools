@@ -28,7 +28,7 @@ cp mac/ytdl ~/bin/ytdl && \
 chmod +x ~/bin/ytcut ~/bin/ytaudio ~/bin/ytsub ~/bin/ytdl && \
 grep -qxF 'export PATH="$HOME/bin:$PATH"' ~/.zshrc || echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc && \
 source ~/.zshrc
-````
+```
 
 Then check:
 
@@ -74,6 +74,8 @@ macOS scripts now use Safari cookies by default through `yt-dlp --cookies-from-b
 
 Windows scripts now use Chrome cookies by default through `yt-dlp --cookies-from-browser chrome`.
 
+If macOS shows `Operation not permitted` while reading Safari cookies, grant Full Disk Access to your terminal app in System Settings, or switch to another browser source with `YTDLP_COOKIE_BROWSER`.
+
 If you want to disable cookie loading on macOS, run:
 
 ```bash
@@ -106,6 +108,8 @@ Then open PowerShell and run:
 
 ```powershell
 git clone https://github.com/randomwalk0101/youtube-tools.git "$env:USERPROFILE\youtube-tools"
+cd "$env:USERPROFILE\youtube-tools"
+.\windows\install.ps1
 ```
 
 If PowerShell blocks scripts, run:
@@ -118,7 +122,25 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 ## Windows Usage
 
-Run these from PowerShell:
+After installation, open a new PowerShell window and run the commands directly:
+
+```powershell
+ytdl
+```
+
+```powershell
+ytaudio
+```
+
+```powershell
+ytsub
+```
+
+```powershell
+ytcut
+```
+
+If you prefer to run them from the repository without installing the launchers, you can still use the scripts directly:
 
 ```powershell
 cd "$env:USERPROFILE\youtube-tools"
@@ -148,6 +170,8 @@ Output folders:
 %USERPROFILE%\Downloads\ytsub
 %USERPROFILE%\Downloads\ytdl
 ```
+
+If you want to launch the tools with arguments, the Windows scripts also accept the URL as the first argument and, for the audio and cut tools, the number of seconds as the second argument.
 
 ---
 
@@ -216,7 +240,7 @@ Please comply with YouTube Terms of Service and applicable copyright laws.
 
 ## Welcome donate
 
-Bep20：
+Bep20ï¼
 
 ```bash
 0x5fab904fc0f0d03c0769f2964a167eb60dacf481
