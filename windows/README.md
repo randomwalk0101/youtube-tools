@@ -16,7 +16,7 @@ Make sure `yt-dlp.exe` and `ffmpeg.exe` are available in PATH.
 From the project folder, run:
 
 ```powershell
-.\windows\install.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\install.ps1
 ```
 
 Then open a new PowerShell window and use the tools directly:
@@ -31,8 +31,8 @@ ytcut
 If you do not want to install the launchers, you can still run the scripts directly from the project folder:
 
 ```powershell
-.\windows\ytcut.ps1
-.\windows\ytaudio.ps1
-.\windows\ytsub.ps1
-.\windows\ytdl.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\ytcut.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\ytaudio.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\ytsub.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\ytdl.ps1
 ```

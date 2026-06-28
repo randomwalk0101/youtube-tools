@@ -108,7 +108,7 @@ Then open PowerShell and run:
 ```powershell
 git clone https://github.com/randomwalk0101/youtube-tools.git "$env:USERPROFILE\youtube-tools"
 cd "$env:USERPROFILE\youtube-tools"
-.\windows\install.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\install.ps1
 ```
 
 If PowerShell blocks scripts, run:
@@ -143,22 +143,22 @@ If you prefer to run them from the repository without installing the launchers, 
 
 ```powershell
 cd "$env:USERPROFILE\youtube-tools"
-.\windows\ytcut.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\ytcut.ps1
 ```
 
 ```powershell
 cd "$env:USERPROFILE\youtube-tools"
-.\windows\ytaudio.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\ytaudio.ps1
 ```
 
 ```powershell
 cd "$env:USERPROFILE\youtube-tools"
-.\windows\ytsub.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\ytsub.ps1
 ```
 
 ```powershell
 cd "$env:USERPROFILE\youtube-tools"
-.\windows\ytdl.ps1
+powershell -ExecutionPolicy Bypass -File .\windows\ytdl.ps1
 ```
 
 Output folders:
