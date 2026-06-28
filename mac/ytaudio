@@ -2,6 +2,7 @@
 
 read -p "YouTube链接: " URL
 read -p "提取前多少秒音频，直接回车下载完整音频: " CUT_SECONDS
+COOKIE_BROWSER="${YTDLP_COOKIE_BROWSER:-safari}"
 
 VIDEO_ID=$(echo "$URL" | sed -n 's/.*v=\([^&]*\).*/\1/p')
 
@@ -21,7 +22,13 @@ TMPDIR="$OUTDIR/tmp_$VIDEO_ID"
 
 mkdir -p "$TMPDIR"
 
+YTDLP_ARGS=()
+if [ -n "$COOKIE_BROWSER" ]; then
+  YTDLP_ARGS+=(--cookies-from-browser "$COOKIE_BROWSER")
+fi
+
 "$HOME/bin/yt-dlp" \
+"${YTDLP_ARGS[@]}" \
 "$CLEAN_URL" \
 --no-playlist \
 -f "bestaudio/best" \
@@ -30,6 +37,7 @@ mkdir -p "$TMPDIR"
 AUDIOFILE=$(find "$TMPDIR" -type f | head -n 1)
 
 TITLE=$("$HOME/bin/yt-dlp" \
+"${YTDLP_ARGS[@]}" \
 --get-title \
 --no-playlist \
 "$CLEAN_URL" | head -n 1)

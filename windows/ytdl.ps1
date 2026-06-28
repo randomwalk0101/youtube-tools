@@ -1,6 +1,17 @@
 $url = Read-Host "YouTube URL"
+
+function Get-YtDlpCookieArgs {
+    $browser = $env:YTDLP_COOKIE_BROWSER
+    if ([string]::IsNullOrWhiteSpace($browser)) {
+        $browser = "chrome"
+    }
+
+    return @("--cookies-from-browser", $browser)
+}
+
 $outdir = "$env:USERPROFILE\Downloads\ytdl"
 New-Item -ItemType Directory -Force -Path $outdir | Out-Null
+$cookieArgs = Get-YtDlpCookieArgs
 
 if (-not (Get-Command yt-dlp.exe -ErrorAction SilentlyContinue)) {
     Write-Host "Cannot find yt-dlp.exe. Please install yt-dlp first."
@@ -28,7 +39,7 @@ Write-Host "Video ID: $id"
 Write-Host "Reading available qualities..."
 Write-Host ""
 
-$json = yt-dlp.exe -J --no-playlist $clean | ConvertFrom-Json
+$json = yt-dlp.exe @cookieArgs -J --no-playlist $clean | ConvertFrom-Json
 
 $formats = $json.formats |
     Where-Object { $_.vcodec -ne "none" -and $_.height } |
@@ -118,6 +129,7 @@ Write-Host "Output folder: $outdir"
 Write-Host ""
 
 yt-dlp.exe `
+    @cookieArgs `
     $clean `
     --no-playlist `
     -f $format `

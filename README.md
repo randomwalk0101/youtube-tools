@@ -68,6 +68,30 @@ Output folders:
 ~/Downloads/ytdl
 ```
 
+## Cookies
+
+macOS scripts now use Safari cookies by default through `yt-dlp --cookies-from-browser safari`.
+
+Windows scripts now use Chrome cookies by default through `yt-dlp --cookies-from-browser chrome`.
+
+If you want to disable cookie loading on macOS, run:
+
+```bash
+export YTDLP_COOKIE_BROWSER=
+```
+
+If you want to override the default on macOS or Windows, set:
+
+```bash
+export YTDLP_COOKIE_BROWSER=chrome
+```
+
+PowerShell example:
+
+```powershell
+$env:YTDLP_COOKIE_BROWSER = "edge"
+```
+
 ---
 
 ## Windows One-Command Setup

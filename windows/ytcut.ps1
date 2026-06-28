@@ -1,9 +1,19 @@
 $url = Read-Host "YouTube URL"
 $seconds = Read-Host "Download first N seconds"
 
+function Get-YtDlpCookieArgs {
+    $browser = $env:YTDLP_COOKIE_BROWSER
+    if ([string]::IsNullOrWhiteSpace($browser)) {
+        $browser = "chrome"
+    }
+
+    return @("--cookies-from-browser", $browser)
+}
+
 $outdir = "$env:USERPROFILE\Downloads\ytcut"
 $tmpdir = "$outdir\tmp"
 New-Item -ItemType Directory -Force -Path $tmpdir | Out-Null
+$cookieArgs = Get-YtDlpCookieArgs
 
 if ($url -match "v=([^&]+)") {
     $id = $Matches[1]
@@ -16,10 +26,10 @@ if ($url -match "v=([^&]+)") {
 
 $clean = "https://www.youtube.com/watch?v=$id"
 
-yt-dlp.exe $clean --no-playlist -f "best[height<=720][ext=mp4]/best[height<=720]/best" -o "$tmpdir\full.%(ext)s"
+yt-dlp.exe @cookieArgs $clean --no-playlist -f "best[height<=720][ext=mp4]/best[height<=720]/best" -o "$tmpdir\full.%(ext)s"
 
 $file = Get-ChildItem $tmpdir | Select-Object -First 1
-$title = yt-dlp.exe --get-title --no-playlist $clean
+$title = yt-dlp.exe @cookieArgs --get-title --no-playlist $clean
 $safe = ($title -replace '[\\/:*?"<>|]', '_')
 if ($safe.Length -gt 80) { $safe = $safe.Substring(0,80) }
 
