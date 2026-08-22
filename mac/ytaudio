@@ -1,14 +1,51 @@
 #!/bin/bash
 
-read -p "YouTube链接: " URL
-read -p "提取前多少秒音频，直接回车下载完整音频: " CUT_SECONDS
-COOKIE_BROWSER="${YTDLP_COOKIE_BROWSER:-safari}"
+URL="${1:-}"
+CUT_SECONDS="${2:-}"
 
-VIDEO_ID=$(echo "$URL" | sed -n 's/.*v=\([^&]*\).*/\1/p')
-
-if [ -z "$VIDEO_ID" ]; then
-  VIDEO_ID=$(echo "$URL" | sed -n 's#.*youtu\.be/\([^?&/]*\).*#\1#p')
+if [ -z "$URL" ]; then
+  read -p "YouTube链接: " URL
 fi
+
+if [ -z "${2+x}" ]; then
+  CUT_SECONDS=""
+  remaining=10
+  while [ "$remaining" -gt 0 ]; do
+    printf "\r提取前多少秒音频，直接回车下载完整音频（%2ds后自动下载完整音频）: " "$remaining"
+    if IFS= read -r -t 1 CUT_SECONDS; then
+      break
+    fi
+    remaining=$((remaining - 1))
+  done
+  printf "\n"
+fi
+
+COOKIE_BROWSER="${YTDLP_COOKIE_BROWSER:-safari}"
+AUDIO_OUT_DIR="${YTAUDIO_OUT_DIR:-$HOME/Downloads/ytaudio}"
+
+VIDEO_ID=$(python3 - "$URL" <<'PY'
+import re
+import sys
+from urllib.parse import parse_qs, urlparse
+
+url = sys.argv[1].strip()
+parsed = urlparse(url)
+host = parsed.netloc.lower()
+path_parts = [part for part in parsed.path.split("/") if part]
+query = parse_qs(parsed.query)
+
+video_id = query.get("v", [""])[0]
+if not video_id and "youtu.be" in host and path_parts:
+    video_id = path_parts[0]
+if not video_id and "youtube.com" in host and len(path_parts) >= 2 and path_parts[0] in {"live", "shorts", "embed"}:
+    video_id = path_parts[1]
+if not video_id:
+    match = re.search(r"(?:v=|youtu\.be/|/live/|/shorts/|/embed/)([A-Za-z0-9_-]{6,})", url)
+    video_id = match.group(1) if match else ""
+
+print(video_id)
+PY
+)
 
 if [ -z "$VIDEO_ID" ]; then
   echo "没有识别到视频ID"
@@ -17,10 +54,9 @@ fi
 
 CLEAN_URL="https://www.youtube.com/watch?v=$VIDEO_ID"
 
-OUTDIR="$HOME/Downloads/ytaudio"
-TMPDIR="$OUTDIR/tmp_$VIDEO_ID"
+TMPDIR="$HOME/Downloads/ytaudio/tmp_$VIDEO_ID"
 
-mkdir -p "$TMPDIR"
+mkdir -p "$TMPDIR" "$AUDIO_OUT_DIR"
 
 YTDLP_ARGS=()
 if [ -n "$COOKIE_BROWSER" ]; then
@@ -55,7 +91,7 @@ fi
 SAFE_TITLE=$(echo "$TITLE" | tr '/:*?"<>|' '_' | cut -c 1-80)
 
 if [ -z "$CUT_SECONDS" ]; then
-  OUTFILE="$OUTDIR/${SAFE_TITLE}_full.mp3"
+  FINAL_NAME="${SAFE_TITLE}_full.mp3"
 
   ffmpeg -y \
   -i "$AUDIOFILE" \
@@ -63,9 +99,9 @@ if [ -z "$CUT_SECONDS" ]; then
   -ar 44100 \
   -ac 2 \
   -b:a 192k \
-  "$OUTFILE"
+  "$AUDIO_OUT_DIR/$FINAL_NAME"
 else
-  OUTFILE="$OUTDIR/${SAFE_TITLE}_${CUT_SECONDS}s.mp3"
+  FINAL_NAME="${SAFE_TITLE}_${CUT_SECONDS}s.mp3"
 
   ffmpeg -y \
   -i "$AUDIOFILE" \
@@ -74,10 +110,10 @@ else
   -ar 44100 \
   -ac 2 \
   -b:a 192k \
-  "$OUTFILE"
+  "$AUDIO_OUT_DIR/$FINAL_NAME"
 fi
 
 rm -rf "$TMPDIR"
 
 echo ""
-echo "完成：$OUTFILE"
+echo "完成：$AUDIO_OUT_DIR/$FINAL_NAME"

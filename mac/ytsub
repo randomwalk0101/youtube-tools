@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-import json, os, re, subprocess, sys, shutil
+import json, os, re, select, subprocess, sys, shutil, time
 from urllib.parse import urlparse, parse_qs
 
 YTDLP = os.path.expanduser("~/bin/yt-dlp")
 OUTDIR = os.path.expanduser("~/Downloads/ytsub")
+OUTPUT_MID = os.environ.get("YTSUB_OUT_DIR", os.path.expanduser("~/Downloads/ytsub")).strip()
 os.makedirs(OUTDIR, exist_ok=True)
+os.makedirs(OUTPUT_MID, exist_ok=True)
 COOKIE_BROWSER = os.environ.get("YTDLP_COOKIE_BROWSER", "safari").strip()
 
 
@@ -15,11 +17,20 @@ def yt_dlp_args():
     return args
 
 def clean_url(url):
-    if "youtu.be/" in url:
-        vid = url.split("youtu.be/")[1].split("?")[0].split("&")[0]
-    else:
-        q = parse_qs(urlparse(url).query)
-        vid = q.get("v", [""])[0]
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    path_parts = [part for part in parsed.path.split("/") if part]
+    q = parse_qs(parsed.query)
+
+    vid = q.get("v", [""])[0]
+    if not vid and "youtu.be" in host and path_parts:
+        vid = path_parts[0]
+    if not vid and "youtube.com" in host and len(path_parts) >= 2 and path_parts[0] in {"live", "shorts", "embed"}:
+        vid = path_parts[1]
+    if not vid:
+        match = re.search(r"(?:v=|youtu\.be/|/live/|/shorts/|/embed/)([A-Za-z0-9_-]{6,})", url)
+        vid = match.group(1) if match else ""
+
     if not vid:
         return None, None
     return vid, f"https://www.youtube.com/watch?v={vid}"
@@ -31,7 +42,21 @@ def safe_name(name):
 def run(cmd):
     return subprocess.run(cmd, text=True, capture_output=True)
 
-url = input("YouTube链接: ").strip()
+def is_live_url(url):
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    path_parts = [part for part in parsed.path.split("/") if part]
+    return "youtube.com" in host and bool(path_parts) and path_parts[0] == "live"
+
+def run_audio_download(url):
+    audio_cmd = os.path.expanduser("~/bin/ytaudio")
+    result = subprocess.run([audio_cmd, url])
+    sys.exit(result.returncode)
+
+url = sys.argv[1].strip() if len(sys.argv) > 1 else input("YouTube链接: ").strip()
+output_format = (sys.argv[2].strip().lower() if len(sys.argv) > 2 else "txt")
+if output_format not in {"txt", "srt", "both"}:
+    output_format = "txt"
 video_id, clean = clean_url(url)
 
 if not video_id:
@@ -39,40 +64,86 @@ if not video_id:
     sys.exit(1)
 
 print(f"\n识别到视频ID：{video_id}")
+
 print("正在读取字幕列表...\n")
 
 p = run([YTDLP, *yt_dlp_args(), "-J", "--no-playlist", clean])
 if p.returncode != 0:
-    print(p.stderr)
-    sys.exit(1)
+    err = (p.stderr or "").strip()
+    if "Premieres in" in err:
+        print("这个视频还在首映或尚未公开可下载，请等它正式发布后再试。")
+    elif "Private video" in err:
+        print("这个视频是私有内容，当前无法下载字幕或音频。")
+    elif "This live event will begin" in err or "waiting for the live stream to begin" in err.lower():
+        print("这个视频是直播预约或尚未开播，暂时无法下载。")
+    else:
+        print(err or "读取视频信息失败。")
+    sys.exit(2)
 
 info = json.loads(p.stdout)
 title = safe_name(info.get("title", video_id))
+is_live_video = is_live_url(url) or bool(info.get("was_live")) or info.get("live_status") in {"is_live", "was_live", "post_live"}
 
 items = []
+skipped_live_chat = False
 
 for code, formats in info.get("subtitles", {}).items():
+    if code == "live_chat":
+        skipped_live_chat = True
+        continue
     items.append(("manual", code, formats))
 
 for code, formats in info.get("automatic_captions", {}).items():
+    if code == "live_chat":
+        skipped_live_chat = True
+        continue
     items.append(("auto", code, formats))
 
 if not items:
-    print("这个视频没有可下载字幕。")
-    sys.exit(0)
+    if skipped_live_chat:
+        print("这个视频只有 live_chat 聊天记录，没有真正的视频字幕，切换到音频下载。")
+    else:
+        print("这个视频没有可下载字幕，切换到音频下载。")
+    run_audio_download(url)
 
-print("可下载字幕：")
-for i, (kind, code, formats) in enumerate(items, 1):
-    label = "人工字幕" if kind == "manual" else "自动字幕"
-    print(f"{i}. {code}  [{label}]")
+if is_live_video:
+    preferred = next((item for item in items if item[0] == "auto" and item[1] == "zh-Hans"), None)
+    if preferred is None:
+        preferred = next((item for item in items if item[1] == "zh-Hans"), None)
+    if preferred is None:
+        print("直播/直播回放没有可下载的 zh-Hans 字幕，切换到音频下载。")
+        run_audio_download(url)
+    kind, lang, formats = preferred
+    label = "自动字幕" if kind == "auto" else "人工字幕"
+    print(f"检测到直播/直播回放视频，自动选择 {lang} [{label}]。")
+else:
+    print("可下载字幕：")
+    for i, (kind, code, formats) in enumerate(items, 1):
+        label = "人工字幕" if kind == "manual" else "自动字幕"
+        print(f"{i}. {code}  [{label}]")
 
-choice = input("\n输入数字选择字幕: ").strip()
+    default_index = next((i for i, item in enumerate(items, 1) if item[1] == "zh-Hans"), 1)
+    default_kind, default_lang, _ = items[default_index - 1]
 
-if not choice.isdigit() or not (1 <= int(choice) <= len(items)):
-    print("选择无效")
-    sys.exit(1)
+    print(f"\n输入数字选择字幕（10 秒后默认选择 {default_lang}）: ", end="", flush=True)
+    choice = ""
+    for remaining in range(10, 0, -1):
+        ready, _, _ = select.select([sys.stdin], [], [], 1)
+        if ready:
+            choice = sys.stdin.readline().strip()
+            break
+        print(f"\r输入数字选择字幕（{remaining - 1} 秒后默认选择 {default_lang}）: ", end="", flush=True)
+    else:
+        print()
 
-kind, lang, formats = items[int(choice)-1]
+    if not choice:
+        choice = str(default_index)
+
+    if not choice.isdigit() or not (1 <= int(choice) <= len(items)):
+        print("\n选择无效")
+        sys.exit(1)
+
+    kind, lang, formats = items[int(choice)-1]
 
 tmpdir = os.path.join(OUTDIR, f"tmp_{video_id}")
 shutil.rmtree(tmpdir, ignore_errors=True)
@@ -98,7 +169,10 @@ else:
 
 print(f"\n正在下载：{lang} [{kind}]\n")
 
-subprocess.run(cmd)
+download_result = subprocess.run(cmd)
+if download_result.returncode != 0:
+    print("\n字幕下载失败，可能是该字幕尚未可用或视频当前不可抓取。")
+    sys.exit(download_result.returncode)
 
 vtt_files = []
 for root, dirs, files in os.walk(tmpdir):
@@ -116,7 +190,8 @@ final_base = os.path.join(OUTDIR, f"{title}_{lang}_{kind}")
 
 final_vtt = final_base + ".vtt"
 final_srt = final_base + ".srt"
-final_txt = final_base + ".txt"
+final_txt = os.path.join(OUTPUT_MID, f"{title}_{lang}_{kind}.txt")
+final_srt_mid = os.path.join(OUTPUT_MID, f"{title}_{lang}_{kind}.srt")
 
 shutil.copy(vtt, final_vtt)
 
@@ -152,12 +227,28 @@ for line in text_lines:
         cleaned.append(line)
     last = line
 
-with open(final_txt, "w", encoding="utf-8") as f:
-    f.write("\n".join(cleaned))
+if output_format in {"txt", "both"}:
+    with open(final_txt, "w", encoding="utf-8") as f:
+        f.write("\n".join(cleaned))
+
+if output_format in {"srt", "both"}:
+    shutil.copy(final_srt, final_srt_mid)
+
+for artifact in (final_vtt, final_srt):
+    try:
+        os.remove(artifact)
+    except FileNotFoundError:
+        pass
 
 shutil.rmtree(tmpdir, ignore_errors=True)
 
-print("\n完成，已输出三种格式：")
-print(final_vtt)
-print(final_srt)
-print(final_txt)
+if output_format == "txt":
+    print("\n完成，已输出 txt：")
+    print(final_txt)
+elif output_format == "srt":
+    print("\n完成，已输出 srt：")
+    print(final_srt_mid)
+else:
+    print("\n完成，已输出 txt 和 srt：")
+    print(final_txt)
+    print(final_srt_mid)
